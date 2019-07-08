@@ -476,12 +476,12 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }  
                     If ($InfoLevel.SiteDetails.LocalSiteNetworks) {
                         Section -Style Heading3 "Networks" { 
-                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Network | Select-object "Network List" | Get-Unique | Sort-Object | Table -Name "Local site Networks"
+                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Network | Select-object "Network List" | Get-Unique -AsString | Sort-Object | Table -Name "Local site Networks"
                         }
                     }    
                     If ($InfoLevel.SiteDetails.LocalSiteDatastores) {
                         Section -Style Heading3 "Datastores" { 
-                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Datastore | Select-object "Datastore List" | Get-Unique | Sort-Object | Table -Name "Local site Datastores"
+                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Datastore | Select-object "Datastore List" | Get-Unique -AsString | Sort-Object | Table -Name "Local site Datastores"
                         }
                     }  
                 }
