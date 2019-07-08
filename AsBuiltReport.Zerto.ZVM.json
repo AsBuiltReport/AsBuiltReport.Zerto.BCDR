@@ -27,7 +27,7 @@
             "_Section":true,
             "VPGs": true,
             "Hardware": true,
-            "Network": true    
+            "Network": false    
         }
     }
 }

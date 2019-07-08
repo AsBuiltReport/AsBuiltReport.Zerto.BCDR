@@ -366,7 +366,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
             $vSphereDatastore | ForEach-Object {
                 $vSphereDatastoreObject = New-Object psobject -Property @{
                     "Identifier" = $_.DatastoreIdentifier   
-                    "Name"       = $_.DatastoreName 
+                    "Name" = $_.DatastoreName 
+                    "Datastore List" = $_.DatastoreName
                 }
                 ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Datastore += $vSphereDatastoreObject 
             }
@@ -410,7 +411,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
             $vSphereNetwork | ForEach-Object {
                 $vSphereNetworkObject = New-Object psobject -Property @{
                     "Identifier" = $_.NetworkIdentifier   
-                    "Name"       = $_.VirtualizationNetworkName
+                    "Name" = $_.VirtualizationNetworkName
+                    "Network List" = $_.VirtualizationNetworkName
                 }
                 ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Network += $vSphereNetworkObject 
             }
@@ -474,12 +476,12 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }  
                     If ($InfoLevel.SiteDetails.LocalSiteNetworks) {
                         Section -Style Heading3 "Networks" { 
-                            $zerto.localsite | Select-object "Network List" | Table -Name "Local site Networks"
+                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Network | Select-object "Network List" | Get-Unique | Sort-Object | Table -Name "Local site Networks"
                         }
                     }    
                     If ($InfoLevel.SiteDetails.LocalSiteDatastores) {
-                        Section -Style Heading3 "Storage" { 
-                            $zerto.localsite | Select-object "Network List" | Table -Name "Local site Networks"
+                        Section -Style Heading3 "Datastores" { 
+                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Datastore | Select-object "Datastore List" | Get-Unique | Sort-Object | Table -Name "Local site Datastores"
                         }
                     }  
                 }
