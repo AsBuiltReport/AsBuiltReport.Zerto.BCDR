@@ -1,0 +1,33 @@
+{
+    "Report": {
+        "Name": "Zerto As Built Report",
+        "Version": "0.1",
+        "Status": "Pre-Release"
+    },
+    "Options": {
+        "Port": 9669
+    },
+    "InfoLevel": {
+        "SiteDetails":{
+            "_Section":true,
+            "LocalSite": true,
+            "LocalSiteContacts": true,
+            "LocalSiteNetworks": true,
+            "LocalSiteDatastores": true,
+            "RemoteSites": true
+        },
+        "VRAs":{
+            "_Section":true,
+            "Overview": true,
+            "Network":true,
+            "Storage":true    
+        },        
+        "VPGs": true, 
+        "VMs":{
+            "_Section":true,
+            "VPGs": true,
+            "Hardware": true,
+            "Network": true    
+        }
+    }
+}
