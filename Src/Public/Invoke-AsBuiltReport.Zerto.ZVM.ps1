@@ -213,6 +213,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }
                     $TableParams = @{
                         Name = "Sites - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
                     }
                     if ($Report.ShowTableCaptions) {
                         $TableParams['Caption'] = "- $($TableParams.Name)"
@@ -223,7 +225,7 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
             #endregion Sites
 
             #region VRAs
-            if (VRAs) {
+            if ($VRAs) {
                 Section -Style Heading2 'VRAs' {
                     $VRAInfo = foreach ($VRA in $VRAs) {
                         [PSCustomObject] @{
@@ -286,6 +288,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }
                     $TableParams = @{
                         Name = "VRAs - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
                     }
                     if ($Report.ShowTableCaptions) {
                         $TableParams['Caption'] = "- $($TableParams.Name)"
@@ -312,6 +316,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }
                     $TableParams = @{
                         Name = "Service Profiles - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
                     }
                     if ($Report.ShowTableCaptions) {
                         $TableParams['Caption'] = "- $($TableParams.Name)"
@@ -434,6 +440,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }
                     $TableParams = @{
                         Name = "VPGs - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
                     }
                     if ($Report.ShowTableCaptions) {
                         $TableParams['Caption'] = "- $($TableParams.Name)"
@@ -555,6 +563,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }
                     $TableParams = @{
                         Name = "VMs - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
                     }
                     if ($Report.ShowTableCaptions) {
                         $TableParams['Caption'] = "- $($TableParams.Name)"
@@ -586,6 +596,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }
                     $TableParams = @{
                         Name = "Datastores - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
                     }
                     if ($Report.ShowTableCaptions) {
                         $TableParams['Caption'] = "- $($TableParams.Name)"
@@ -616,6 +628,8 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     }
                     $TableParams = @{
                         Name = "Volumes - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
                     }
                     if ($Report.ShowTableCaptions) {
                         $TableParams['Caption'] = "- $($TableParams.Name)"
