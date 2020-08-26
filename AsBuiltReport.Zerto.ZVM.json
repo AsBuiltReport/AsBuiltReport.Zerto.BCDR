@@ -1,33 +1,26 @@
 {
     "Report": {
         "Name": "Zerto As Built Report",
-        "Version": "0.1",
-        "Status": "Pre-Release"
+        "Version": "1.0",
+        "Status": "Released",
+        "ShowCoverPageImage": true,
+        "ShowHeaderFooter": true,
+        "ShowTableCaptions": true
     },
     "Options": {
-        "Port": 9669
+        "ZvmPort": 9669
     },
     "InfoLevel": {
-        "SiteDetails":{
-            "_Section":true,
-            "LocalSite": true,
-            "LocalSiteContacts": true,
-            "LocalSiteNetworks": true,
-            "LocalSiteDatastores": true,
-            "RemoteSites": true
-        },
-        "VRAs":{
-            "_Section":true,
-            "Overview": true,
-            "Network":true,
-            "Storage":true    
-        },        
-        "VPGs": true, 
-        "VMs":{
-            "_Section":true,
-            "VPGs": true,
-            "Hardware": true,
-            "Network": false    
-        }
+        "_comment_": "0 = Disabled, 1 = Enabled / Summary, 2 = Detailed, 3 = Comprehensive",
+        "LocalSite": 2,
+        "PeerSite": 2,
+        "ServiceProfiles": 0,
+        "VRAs": 2,        
+        "VPGs": 2, 
+        "VMs": 2,
+        "Datastores": 2,
+        "Volumes": 2
+    },
+    "HealthCheck": {
     }
 }

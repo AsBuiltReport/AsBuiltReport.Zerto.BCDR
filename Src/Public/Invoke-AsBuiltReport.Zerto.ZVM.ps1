@@ -1,541 +1,631 @@
 function Invoke-AsBuiltReport.Zerto.ZVM {
     <#
-.SYNOPSIS  
-    PowerShell script to document the configuration of Zerto infrastucture in Word/HTML/XML/Text formats
-.DESCRIPTION
-    Documents the configuration of Zerto infrastucture in Word/HTML/XML/Text formats using PScribo.
-.NOTES
-    Version:        0.1
-    Author:         Richard Gray
-    Twitter:        @goodgigs
-    Github:         richard-gray
-    Credits:        Iain Brighton (@iainbrighton) - PScribo module
-                    Jake Rutski (@jrutski) - VMware vSphere Documentation Script Concept
-                    Tim Carman (@tpcarman) - Base implmentation
-                    Joshua Stenhouse (joshuastenhouse@gmail.com) - Zerto Info Script
-.LINK
-    https://github.com/tpcarman/As-Built-Report
-    https://github.com/iainbrighton/PScribo
-#>
-
-    #region Configuration Settings
-    #---------------------------------------------------------------------------------------------#
-    #                                    CONFIG SETTINGS                                          #
-    #---------------------------------------------------------------------------------------------#
+    .SYNOPSIS  
+        PowerShell script to document the configuration of Zerto infrastucture in Word/HTML/Text formats
+    .DESCRIPTION
+        Documents the configuration of Zerto infrastucture in Word/HTML/Text formats using PScribo.
+    .NOTES
+        Version:        0.1.0
+        Author:         Richard Gray / Tim Carman
+        Twitter:        @goodgigs / @tpcarman
+        Github:         richard-gray / tpcarman
+        Credits:        Iain Brighton (@iainbrighton) - PScribo module
+                        Joshua Stenhouse (@joshuastenhouse) - Zerto Info Script
+    .LINK
+        https://github.com/AsBuiltReport/AsBuiltReport.Zerto.ZVM
+    #>
 
     param (
         [String[]] $Target,
-        [PSCredential] $Credential,
-        [String]$StylePath
+        [PSCredential] $Credential
     )
 
-    # Import JSON Configuration for Options and InfoLevel
+    # Import Report Configuration
+    $Report = $ReportConfig.Report
     $InfoLevel = $ReportConfig.InfoLevel
     $Options = $ReportConfig.Options
-
-    # If custom style not set, use default style
-    if (!$StylePath) {
-        & "$PSScriptRoot\..\..\AsBuiltReport.Zerto.ZVM.Style.ps1"
-    }
+    # Used to set values to TitleCase where required
+    $TextInfo = (Get-Culture).TextInfo
     
-    ##################
+    #region foreach $ZVM in $Target
+    foreach ($ZVM in $Target) {
+        #region API Collections
+        $LocalSite = Get-ZertoApi -Uri '/localsite'
+        $PeerSites = Get-ZertoApi -Uri '/peersites'
+        $VirtualizationSites = Get-ZertoApi -Uri '/virtualizationsites'
+        $ServiceProfiles = Get-ZertoApi -Uri '/serviceprofiles'
+        $VPGs = Get-ZertoApi -Uri '/vpgs'
+        $VRAs = Get-ZertoApi -Uri '/vras'
+        $VMs = Get-ZertoApi -Uri '/vms'
+        $Volumes = Get-ZertoApi -Uri '/volumes'
+        $Datastores = Get-ZertoApi -Uri '/datastores'
+        $FLRs = Get-ZertoApi -Uri '/flrs'
+        $License = Get-ZertoApi -Uri '/license'
+        #endregion API Collections
 
-    # Passed by the Parent, Check number of targets
-
-    $script:ZertoServer = $Target 
-    $script:ZertoUser = $Credential.UserName
-    $script:ZertoPassword = $Credential.GetNetworkCredential().Password
-    #endregion Configuration Settings
-
-    #region Script Functions
-    #---------------------------------------------------------------------------------------------#
-    #                                    SCRIPT FUNCTIONS                                         #
-    #---------------------------------------------------------------------------------------------#
-
-    #endregion Script Functions
-
-    #region Script Body
-    #---------------------------------------------------------------------------------------------#
-    #                                         SCRIPT BODY                                         #
-    #---------------------------------------------------------------------------------------------#
-
-    # Script Variables
-    ##### Pull this out int report j
-
-
-    #region Get Zerto data and create custom Powershell object 
-
-    # Set Cert Policy
-    add-type @"
-    using System.Net;
-    using System.Security.Cryptography.X509Certificates;
-    public class TrustAllCertsPolicy : ICertificatePolicy {
-        public bool CheckValidationResult(ServicePoint srvPoint, X509Certificate certificate,WebRequest request, int certificateProblem) {
-            return true;
-        }
-    }
-"@
-    [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsPolicy
-
-    # Setup API headers and login to zerto
-    $script:baseURL = "https://" + $ZertoServer + ":" + ($Options.Port) + "/v1/"
-    $script:baseURL = "https://" + $ZertoServer + ":9669/v1/"
-    $xZertoSessionURL = $baseURL + "session/add"
-    $authInfo = ("{0}:{1}" -f $ZertoUser, $ZertoPassword)
-    $authInfo = [System.Text.Encoding]::UTF8.GetBytes($authInfo)
-    $authInfo = [System.Convert]::ToBase64String($authInfo)
-    $headers = @{Authorization = ("Basic {0}" -f $authInfo) }
-    $sessionBody = '{"AuthenticationMethod": "1"}'
-    $script:ContentType = "application/JSON"
-    $xZertoSessionResponse = Invoke-WebRequest -Uri $xZertoSessionURL -Headers $headers -Method POST -Body $sessionBody -ContentType $ContentType
-    $xZertoSession = $xZertoSessionResponse.headers.get_item("x-zerto-session")
-    $script:zertosessionHeader = @{"x-zerto-session" = $xZertoSession; "Accept" = "application/JSON"; "Content-Type" = "application/JSON" }
-
-    # Function for Zerto API GET queries 
-    function get-zerto($url) {
-        return Invoke-RestMethod -Uri ($BaseURL + $url)  -TimeoutSec 100 -Headers $zertosessionHeader -ContentType $ContentType -Method GET
-    }
-
-    # Setup Zerto Powershell Object
-    $zerto = New-Object System.Object
-    $zerto | Add-Member -Type NoteProperty -Name LocalSite -Value @()
-    $zerto | Add-Member -Type NoteProperty -Name virtualizationsite -Value @()
-    $zerto | Add-Member -Type NoteProperty -Name ServiceProfile -Value @()
-    $zerto | Add-Member -Type NoteProperty -Name VPG -Value @()
-    $zerto | Add-Member -Type NoteProperty -Name VRA -Value @()
-    $zerto | Add-Member -Type NoteProperty -Name VM -Value @()
-
-    # Get the localsite information
-    $localsite = Get-zerto("localsite")
-    $localsiteObject = New-Object PSObject -Property @{ 
-        "Name"                           = $localsite.SiteName
-        "Type"                           = $localsite.SiteType
-        "UTC Offset (Hours)"             = ($localsite.UtcOffsetInMinutes / 60)
-        "Address"                        = $localsite.Location
-        "ZVM Ip Address"                 = $localsite.IpAddress
-        "Contact Phone Number"           = $localsite.ContactPhone
-        "Contact Name"                   = $localsite.ContactName
-        "Contact Email Address"          = $localsite.ContactEmail
-        "Zerto Version"                  = $localsite.Version
-        "Is Replication To Self Enabled" = $localsite.IsReplicationToSelfEnabled
-        "Identifier"                     = $localsite.SiteIdentifier
-    }
-    $zerto.localsite += $localsiteObject
-
-    #Virtualizationsites information
-    $virtualizationsites = Get-zerto("virtualizationsites") 
-    $virtualizationsites | ForEach-Object {
-        $virtualizationsitesObject = New-Object PSObject -Property @{
-            "Identifier"  = $_.SiteIdentifier 
-            "Description" = $_.VirtualizationSiteName
-        }
-        $zerto.virtualizationsite += $virtualizationsitesObject 
-    }
-
-    # Service Profile Information
-    $ServiceProfile = Get-zerto("serviceprofiles")
-    $ServiceProfile | ForEach-Object {
-        $ServiceProfileObject = New-Object PSObject -Property @{
-            "Identifier"              = $_.ServiceProfileIdentifier 
-            "Name"                    = $_.ServiceProfileName
-            "History"                 = $_.History
-            "Journal Warning %"       = $_.JournalWarningThresholdInPercent
-            "MaxJournalSizeInPercent" = $_.MaxJournalSizeInPercent
-            "RPO"                     = $_.Rpo
-            "Test Interval"           = $_.TestInterval
-            "Description"             = $_.Description
-        }
-        $zerto.ServiceProfile += $ServiceProfileObject 
-    }
-
-    # VPG Information
-    $VPGs = Get-zerto("vpgs")
-    $VPGs | ForEach-Object {
-        $VPGIdentifier = $_.VpgIdentifier
-        $VPGsObject = New-Object PSObject -Property @{
-            'Active Processes'          = $_.ActiveProcessesApi
-            'Actual RPO'                = $_.ActualRPO
-            'Backup Enabled'            = $_.BackupEnabled
-            'Configured Rpo Hours'      = [math]::Round($_.ConfiguredRpoSeconds / 60 / 60)
-            'Entities'                  = $_.Entities
-            'Fail Safe History'         = $_.FailSafeHistory
-            'History Status'            = $_.HistoryStatusApi
-            'IOPs'                      = $_.IOPs
-            'Last Test'                 = $_.LastTest
-            'Link'                      = $_.Link
-            'Organization Name'         = $_.OrganizationName
-            'Priority'                  = $_.Priority
-            'Progress Percentage'       = $_.ProgressPercentage
-            'ProtectionSite'            = $_.ProtectedSite
-            'Provisioned StorageIn GB'  = [math]::Round($_.ProvisionedStorageInMB / 1024)
-            'RecoverySite'              = $_.RecoverySite
-            'Service Profile'           = $_.ServiceProfile
-            'Service ProfileIdentifier' = $_.ServiceProfileIdentifier
-            'Service Profile Name'      = $_.ServiceProfileName
-            'Protection Site'           = $_.SourceSite
-            'Status'                    = $_.Status
-            'SubStatus'                 = $_.SubStatus
-            'Recovery Site'             = $_.TargetSite
-            'Throughput In MB'          = $_.ThroughputInMB
-            'UsedStorage In GB'         = [math]::Round($_.UsedStorageInMB / 1024)
-            'Number of VMs'             = $_.VmsCount
-            'Identifier'                = $_.VpgIdentifier
-            'Name'                      = $_.VpgName
-            'Zorg'                      = $_.Zorg
-        }
-        $zerto.VPG += $VPGsObject
-        $VPGVMs = Get-zerto("vpgs/" + $VPGIdentifier + "/checkpointvms")
-        $zerto.VPG | Where-Object { $_.Identifier -eq $VPGIdentifier } | Add-Member -Type NoteProperty -Name VM -Value @()
-        $VPGVMs | ForEach-Object {
-            $VPGVMsObject = New-Object PSObject -Property @{
-                'Identifier' = $_.VmIdentifier
-                'Name'       = $_.VmName
+        #region Lookups
+        # Virtualization Hashtable Lookup, matches Site Id to Site Name
+        $VirtualizationSiteLookup = @{}
+        foreach ($VirtualizationSite in $VirtualizationSites) {
+            # API Collection for VirtualizationSites
+            # Check if site runs vCloud Director
+            $Orgvdcs = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/orgvdcs')
+            # If not vCD, collect information for vCenter Server
+            if (!$Orgvdcs) {
+                $vSphereDatastores = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/datastores')
+                $vSphereDatastoreClusters = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/datastoreclusters')
+                $vSphereHosts = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/hosts')
+                $vSphereHostCluster = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/hostclusters')
+                $vSphereNetwork = Get-ZertoApi -Uri ('virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/networks')
+            } else {
+                $OrgvdcsNetworks = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/orgvdcs/' + $Orgvdcs.Identifier + '/networks')
+                $OrgvdcsStoragePolices = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/orgvdcs/' + $Orgvdcs.Identifier + '/storagepolicies')
             }
-            ($zerto.VPG | Where-Object { $_.Identifier -eq $VPGIdentifier }).VM += $VPGVMsObject
-        }
-        $CommaCount = 0; 
-        $VMlist = ""
-        $VPGVMs | Sort-object VMName | ForEach-Object {
-            $VMlist += $_.VMName
-            If ($CommaCount -lt $VPGVMs.count - 1) {
-                $VMlist += ", " 
-            }
-            $CommaCount++
-        }
-        $zerto.VPG | Where-Object { $_.Identifier -eq $VPGIdentifier } | Add-Member -Type NoteProperty -Name "VM List" -Value $VMlist
-    }
+            $VirtualMachines = Get-ZertoApi -Uri ('/virtualizationsites/' + $($VirtualizationSite.SiteIdentifier) + '/vms')
 
-    # VRA Information
-    $VRAs = Get-zerto("vras")
-    $VRAs | ForEach-Object {
-        $VRAsObject = New-Object PSObject -Property @{
-            'Datastore Cluster Identifier' = $_.DatastoreClusterIdentifier
-            'Datastore Cluster Name'       = $_.DatastoreClusterName
-            'Datastore Identifier'         = $_.DatastoreIdentifier
-            'Datastore Name'               = $_.DatastoreName
-            'Host Identifier'              = $_.HostIdentifier
-            'Host Version'                 = $_.HostVersion
-            'Link'                         = $_.Link
-            'Memory In GB'                 = $_.MemoryInGB
-            'Network Identifier'           = $_.NetworkIdentifier
-            'Network Name'                 = $_.NetworkName
-            'Progress'                     = $_.Progress
-            'Protected Counters'           = $_.ProtectedCounters
-            'Number of VMs'                = $_.ProtectedCounters.VMs
-            'Number of Volumes'            = $_.ProtectedCounters.volumes
-            'Number of VPGs'               = $_.ProtectedCounters.VPGs
-            'Recovery Counters'            = $_.RecoveryCounters
-            'Self Protected Vpgs'          = $_.SelfProtectedVpgs
-            'Status'                       = $_.Status
-            'VRA Group'                    = $_.VraGroup
-            'VRA Identifier'               = $_.VraIdentifier
-            'Name'                         = $_.VraName
-            'Default Gateway'              = $_.VraNetworkDataApi.DefaultGateway
-            'Subnet Mask'                  = $_.VraNetworkDataApi.SubnetMask
-            'IP Address'                   = $_.VraNetworkDataApi.VraIPAddress
-            'IP Assignment'                = $_.VraIPConfigurationTypeApi
-            'VRA Version'                  = $_.VraVersion
-        }
-        $zerto.VRA += $VRAsObject
-    }
-
-    # VM Information
-    $VMs = Get-zerto("vms")
-    $VMs | ForEach-Object {
-        Switch ($_.Status) {
-            0 { $status = "Initializing" }
-            1 { $status = "Meeting SLA" }
-            2 { $status = "Not Meeting SLA" }
-            3 { $status = "RPO Not Meeting SLA" }
-            4 { $status = "History Not Meeting SLA" }
-            5 { $status = "Failing Over" }
-            6 { $status = "Moving" }
-            7 { $status = "Deleting" }
-            8 { $status = "Recovered" }
-            default { $status = "Unknown" }
-        }
-        Switch ($_.SubStatus) {
-            0 { $SubStatus = "None" }
-            1 { $SubStatus = "InitialSync" }
-            2 { $SubStatus = "Creating" }
-            3 { $SubStatus = "Volume Initial Sync" }
-            4 { $SubStatus = "Sync" }
-            5 { $SubStatus = "Recovery Possible" }
-            6 { $SubStatus = "Delta Sync" }
-            7 { $SubStatus = "Needs Configuration" }
-            8 { $SubStatus = "Error" }
-            9 { $SubStatus = "Empty Protection Group" }
-            10 { $SubStatus = "Disconnected From Peer No Recovery Points" }
-            11 { $SubStatus = "Full Sync" }
-            12 { $SubStatus = "Volume Delta Sync" }
-            13 { $SubStatus = "Volume Full Sync" }
-            14 { $SubStatus = "Failing Over Committing" }
-            15 { $SubStatus = "Failing Over Before Commit" }
-            16 { $SubStatus = "Failing Over Rolling Back" }
-            17 { $SubStatus = "Promoting" }
-            18 { $SubStatus = "Moving Committing" }
-            19 { $SubStatus = "Moving Before Commit" }
-            20 { $SubStatus = "Moving Rolling Back" }
-            21 { $SubStatus = "Deleting" }
-            22 { $SubStatus = "Pending Remove" }
-            23 { $SubStatus = "Bitmap Sync" }
-            24 { $SubStatus = "Disconnected From Peer" }
-            25 { $SubStatus = "Replication Paused User Initiated" }
-            26 { $SubStatus = "Replication Paused System Initiated" }
-            27 { $SubStatus = "Recovery StorageProfile Error" }
-            #28{$SubStatus = ""} Does not exist in API documentation
-            29 { $SubStatus = "Rolling Back" }
-            30 { $SubStatus = "Recovery Storage Error" }
-            31 { $SubStatus = "Journal Storage Error" }
-            32 { $SubStatus = "Vm Not Protected Error" }
-            33 { $SubStatus = "Journal Or Recovery Missing Error" }
-            34 { $SubStatus = "Added Vms In Initial Sync" }
-            35 { $SubStatus = "Replication Paused For Missing Volume" }
-            default { $SubStatus = "Unknown" }
-        }
-        Switch ($_.Priority) {
-            0 { $Priority = "Low" } 
-            1 { $Priority = "Medium" } 
-            2 { $Priority = "High" } 
-            default { $Priority = "Unknown" }
-        }
-        $VMsObject = New-Object PSObject -Property @{
-            'Actual RPO'                 = $_.ActualRPO
-            'Enabled Actions'            = $_.EnabledActions
-            'Entities'                   = $_.Entities
-            'Hardware Version'           = $_.HardwareVersion
-            'IOPs'                       = $_.IOPs
-            'Is Vm Exists'               = $_.IsVmExists
-            'Journal Hard Limit'         = $_.JournalHardLimit
-            'Journal Used Storage GB'    = [math]::Round($_.JournalUsedStorageMb / 1024)
-            'Journal Warning Threshold'  = $_.JournalWarningThreshold
-            'Last Test'                  = $_.LastTest
-            'Link'                       = $_.Link
-            'Organization Name'          = $_.OrganizationName
-            'Outgoing Bandwidth in Mbps' = $_.OutgoingBandWidthInMbps
-            'PriorityID'                 = $_.Priority
-            'Priority'                   = $Priority
-            'Protected Site'             = $_.ProtectedSite
-            'Provisioned Storage in GB'  = [math]::Round($_.ProvisionedStorageInMB / 1024)
-            'Recovery Host Identifier'   = $_.RecoveryHostIdentifier
-            'RecoverySite'               = $_.RecoverySite
-            'Protection Site'            = $_.SourceSite
-            'Status ID'                  = $_.Status
-            'Status'                     = $status
-            'Sub Status ID'              = $_.SubStatus
-            'Sub Status'                 = $SubStatus
-            'Recovery Site'              = $_.TargetSite
-            'Throughput In MB'           = $_.ThroughputInMB
-            'Used Storage In GB'         = [math]::Round($_.UsedStorageInMB / 1024)
-            'Identifier'                 = $_.VmIdentifier
-            'Name'                       = $_.VmName
-            'Volumes'                    = $_.Volumes
-            'VpgIdentifier'              = $_.VpgIdentifier
-            'VPG Name'                   = $_.VpgName
-        }
-        $zerto.VM += $VMsObject   
-    }
-
-    # For each site
-    $zerto.virtualizationsite | ForEach-Object {    
-        # Get information on unprotected VMs
-        $SiteIdentifier = $_.Identifier
-
-        $unprotectedvm = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/vms") 
-        $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name UnprotectedVm -Value @()
-        $unprotectedvm | ForEach-Object {
-            $unprotectedVmObject = New-Object psobject -Property @{
-                "Identifier" = $_.VmIdentifier   
-                "Name"       = $_.VmName 
-            }
-            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).UnprotectedVm += $unprotectedVmObject 
-        }
-        # Get platform specific information
-        # Check if site runs vCD
-        $Orgvdcs = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/orgvdcs")
-        if (!$Orgvdcs) {
-            # This IS NOT a vCD Site
-            # Get vSphere specific information
-
-            # Tag this site as vSphere
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name Type -Value "vSphere"
-
-            # vSphere Datastore Information
-            $vSphereDatastore = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/datastores")
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name Datastore -Value @() -Force
-            $vSphereDatastore | ForEach-Object {
-                $vSphereDatastoreObject = New-Object psobject -Property @{
-                    "Identifier" = $_.DatastoreIdentifier   
-                    "Name" = $_.DatastoreName 
-                    "Datastore List" = $_.DatastoreName
-                }
-                ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Datastore += $vSphereDatastoreObject 
-            }
-    
-            # vSphere Datastore Cluster Information
-            $vSphereDatastoreCluster = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/datastoreclusters")
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name DatastoreCluster -Value @() -Force
-            $vSphereDatastoreCluster | ForEach-Object {
-                $vSphereDatastoreClusterObject = New-Object psobject -Property @{
-                    "Identifier" = $_.DatastoreClusterIdentifier   
-                    "Name"       = $_.DatastoreClusterName 
-                }
-                ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).DatastoreCluster += $vSphereDatastoreClusterObject 
-            }
-
-            # vSphere Host Information
-            $vSphereHost = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/hosts")
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name Host -Value @() -Force
-            $vSphereHost | ForEach-Object {
-                $vSphereHostObject = New-Object psobject -Property @{
-                    "Identifier" = $_.HostIdentifier   
-                    "Name"       = $_.VirtualizationHostName 
-                }
-                ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Host += $vSphereHostObject 
-            }
-
-            # vSphere Host Cluster information
-            $vSphereHostCluster = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/hostclusters")
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name HostCluster -Value @() -Force
-            $vSphereHostCluster | ForEach-Object {
-                $vSphereHostClusterObject = New-Object psobject -Property @{
-                    "Identifier" = $_.ClusterIdentifier   
-                    "Name"       = $_.VirtualizationClusterName 
-                }
-                ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).HostCluster += $vSphereHostClusterObject 
-            }
-
-            # vSphere Network information
-            $vSphereNetwork = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/networks")
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name Network -Value @() -Force
-            $vSphereNetwork | ForEach-Object {
-                $vSphereNetworkObject = New-Object psobject -Property @{
-                    "Identifier" = $_.NetworkIdentifier   
-                    "Name" = $_.VirtualizationNetworkName
-                    "Network List" = $_.VirtualizationNetworkName
-                }
-                ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Network += $vSphereNetworkObject 
-            }
-            $CommaCount = 0; 
-            $NetworkList = ""
-            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Network | Sort-object Name -Unique | ForEach-Object {
-                $NetworkList += $_.Name
-                If ($CommaCount -lt ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Network.count - 1) {
-                    $NetworkList += ", " 
-                }
-                $CommaCount++
-            }
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name "Network List" -Value $NetworkList
-
-        }
-        else {
-            # This IS a vCD site
-            # Get vCD specific information
-        
-            # Tag the site as vCD
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name Type -Value "vCloud Director"
-
-            # vCD Network information
-            $OrgvdcsNetworks = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/orgvdcs/" + $Orgvdcs.Identifier + "/networks")
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name Network -Value @() -Force
-            $OrgvdcsNetworks | ForEach-Object {
-                $OrgvdcsNetworksObject = New-Object psobject -Property @{
-                    "Identifier" = $_.NetworkIdentifier   
-                    "Name"       = $_.VirtualizationNetworkName 
-                }
-                ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).Network += $OrgvdcsNetworksObject 
-            }
-
-            # vCD Storage Policy information
-            $OrgvdcsStoragePolices = Get-zerto("virtualizationsites/" + $SiteIdentifier + "/orgvdcs/" + $Orgvdcs.Identifier + "/storagepolicies")
-            $zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier } | Add-Member -Type NoteProperty -Name StoragePolicy -Value @() -Force
-            $OrgvdcsStoragePolices | ForEach-Object {
-                $OrgvdcsStoragePolicesObject = New-Object psobject -Property @{
-                    "Identifier" = $_.StoragePolicyIdentifier   
-                    "Name"       = $_.StoragePolicyName
-                    "Enabled"    = $_.IsEnabled 
-                }
-                ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $SiteIdentifier }).StoragePolicy += $OrgvdcsStoragePolicesObject 
-            }
+            # Site Hashtable Lookup, matches Site Id to Site Name
+            $VirtualizationSiteLookup.($VirtualizationSite.SiteIdentifier) = $VirtualizationSite.VirtualizationSiteName
         }
 
-    }
-    #endregion
+        # VM Hashtable Lookup, matches VM Id to VM Name
+        $VirtualMachineLookup = @{}
+        foreach ($VirtualMachine in $VirtualMachines) {
+            $VirtualMachineLookup.($VirtualMachine.VmIdentifier) = $VirtualMachine.VmName
+        }
 
-    If ($InfoLevel.SiteDetails._Section) {
-        Section -Style Heading1 "Site Details" { 
-            If ($InfoLevel.SiteDetails.LocalSite) {
-                Section -Style Heading2 "Local Site" { 
-                    Section -Style Heading3 "Overview" { 
-                        $zerto.localsite | Select-object Name, Address, "ZVM Ip Address", "Zerto Version", "UTC Offset (Hours)", Type | Table -Name "Local site"
+        # vSphere Host Hashtable Lookup, matches Host Id to Host Name
+        $vSphereHostLookup = @{}
+        foreach ($vSphereHost in $vSphereHosts) {
+            $vSphereHostLookup.($vSphereHost.HostIdentifier) = $vSphereHost.VirtualizationHostName
+        }
+        #endregion Lookups
+
+        #region ZVM Heading 1
+        Section -Style Heading1 $ZVM {
+            #region Local Site Information
+            if ($LocalSite) {               
+                Section -Style Heading2 'Local Site Information' {
+                    $LocalSiteInfo = [PSCustomObject]@{
+                        'Site Name' = $LocalSite.SiteName
+                        'Site Type' = $LocalSite.SiteType
+                        'IP Address' = $LocalSite.IpAddress
+                        'Version' = $LocalSite.Version
+                        'Replication To Self' = Switch ($LocalSite.IsReplicationToSelfEnabled) {
+                            $true { 'Enabled' }
+                            $false { 'Disabled' }
+                        }
+                        'UTC Offset' = "$($LocalSite.UtcOffsetInMinutes / 60) hours"
+                        'Location' = $LocalSite.Location
+                        'Contact Name' = $LocalSite.ContactName
+                        'Contact Email' = $LocalSite.ContactEmail
+                        'Contact Phone' = $LocalSite.ContactPhone
                     }
-                    If ($InfoLevel.SiteDetails.LocalSiteContacts) {
-                        Section -Style Heading3 "Contacts" { 
-                            $zerto.localsite | Select-object "Contact Phone Number", "Contact Name", "Contact Email Address" | Table -Name "Local site contacts"
+                    $TableParams = @{
+                        Name = "Site Information - $ZVM"
+                        List = $true
+                        ColumnWidths = 50, 50
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $LocalSiteInfo | Table @TableParams
+
+                    #region Throttling
+                    Section -Style Heading3 'Throttling' {
+                        $Throttling = [PSCustomObject]@{
+                            'Bandwidth Throttling' = "$($LocalSite.BandwidthThrottlingInMBs) MB/sec"
                         }
-                    }  
-                    If ($InfoLevel.SiteDetails.LocalSiteNetworks) {
-                        Section -Style Heading3 "Networks" { 
-                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Network | Select-object "Network List" | Get-Unique -AsString | Sort-Object | Table -Name "Local site Networks"
+                        $TableParams = @{
+                            Name = "Throttling - $ZVM"
+                            List = $true
+                            ColumnWidths = 50, 50
                         }
-                    }    
-                    If ($InfoLevel.SiteDetails.LocalSiteDatastores) {
-                        Section -Style Heading3 "Datastores" { 
-                            ($zerto.virtualizationsite | Where-Object { $_.Identifier -eq $zerto.localsite.identifier }).Datastore | Select-object "Datastore List" | Get-Unique -AsString | Sort-Object | Table -Name "Local site Datastores"
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
                         }
-                    }  
+                        $Throttling | Table @TableParams
+                    }
+                    #endregion Throttling
+
+                    #region Licensing
+                    if ($License) {
+                        Section -Style Heading3 'Licensing' {
+                            $LicenseInfo = [PSCustomObject]@{
+                                'License' = $License.Details.LicenseKey
+                                'License Type' = $License.Details.LicenseType
+                                'Expiry Date' = [datetime]$License.Details.ExpiryTime
+                                'Quantity' = $License.Details.MaxVms
+                                'Total VMs Count' = $License.Usage.TotalVmsCount
+                            }
+                            $TableParams = @{
+                                Name = "Licensing - $ZVM"
+                                List = $true
+                                ColumnWidths = 50, 50
+                            }
+                            if ($Report.ShowTableCaptions) {
+                                $TableParams['Caption'] = "- $($TableParams.Name)"
+                            }
+                            $LicenseInfo | Table @TableParams
+                        }
+                    }
+                    #endregion Licensing
+
+                    <#
+                    #region Policies
+                    Section -Style Heading3 'Policies' {
+                    }
+                    #endregion Policies
+
+                    #region Email Settings
+                    Section -Style Heading3 'Email Settings' {
+                        $EmailConfig = [PSCustomObject]@{
+                            'SMTP Server Address' = ''
+                            'SMTP Server Port' = ''
+                            'Sender Account' = ''
+                            'To' = ''
+                        }
+                        $TableParams = @{
+                            Name = "Email Settings - $ZVM"
+                            List = $true
+                            ColumnWidths = 50, 50
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $EmailConfig | Table @TableParams
+                    }
+                    #endregion Email Settings
+
+                    #region Reports
+                    Section -Style Heading3 'Reports' {
+                    }
+                    #endregion Reports
+
+                    #region Cloud Settings
+                    Section -Style Heading3 'Cloud Settings' {
+                    }
+                    #endregion Cloud Settings
+
+                    #region LTR Settings
+                    Section -Style Heading3 'LTR Settings' {
+                    }
+                    #endregion LTR Settings
+                    #>
+                } 
+            }
+            #endregion Local Site Information
+
+            #region Sites
+            if ($PeerSites) {
+                Section -Style Heading2 'Sites' {
+                    $PeerSiteInfo = foreach ($PeerSite in $PeerSites) {
+                        [PSCustomObject]@{
+                            'Site Name'= $Peersite.PeerSiteName
+                            'Location' = $Peersite.Location
+                            'Hostname / IP' = $Peersite.HostName
+                            'Network' = $Peersite.OutgoingBandwidth
+                            'Provisioned Storage' = $Peersite.ProvisionedStorage
+                            'Used Storage' = $Peersite.UsedStorage
+                            'Site Type' = $Peersite.SiteType
+                            'Port' = $Peersite.Port
+                            'Version' = $Peersite.Version
+                        }
+                    }
+                    $TableParams = @{
+                        Name = "Sites - $ZVM"
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $PeerSiteInfo | Table @TableParams
                 }
             }
-            If ($InfoLevel.SiteDetails.RemoteSites) {
-                Section -Style Heading2 "Remote Sites" { 
-                    $zerto.virtualizationsite | Where-Object { $_.Identifier -ne $zerto.localsite.identifier } | Select-object Description, Type | Table -Name "Remote site"
+            #endregion Sites
+
+            #region VRAs
+            if (VRAs) {
+                Section -Style Heading2 'VRAs' {
+                    $VRAInfo = foreach ($VRA in $VRAs) {
+                        [PSCustomObject] @{
+                            'Host Address' = $vSphereHostLookup."$($VRA.HostIdentifier)"
+                            'Host Version' = $VRA.HostVersion
+                            'VRA Name' = $VRA.VraName
+                            'VRA Status' = Switch ($VRA.Status) {
+                                0 { 'Installed' }
+                                1 { 'Unsupported ESX Version' }
+                                2 { 'Not Installed' }
+                                3 { 'Installing' }
+                                4 { 'Removing' }
+                                5 { 'Installation Error' }
+                                6 { 'Host Password Changed' }
+                                6 { 'Updating IP Settings' }
+                                8 { 'During Change Host' }
+                                default { 'Unknown' }
+                            }
+                            <#
+                            'VRA Status' = Switch ($VRA.Status) {
+                                'NotInstalled' { 'Not Installed' }
+                                'UnSupportedEsxVersion' { 'Unsupported ESX Version' }
+                                'InstallationError' { 'Installation Error' }
+                                'HostPasswordChanged' { 'Host Password Changed' }
+                                'UpdatingIpSettings' { 'Updating IP Settings' }
+                                'DuringChangeHost' { 'During Change Host' }
+                                default { $VRA.Status }  
+                            }
+                            #>
+                            'VRA Version' = $VRA.VraVersion
+                            'VRA IP Configuration' = $VRA.VraNetworkDataApi.VraIPConfigurationTypeApi
+                            'VRA IP Address' = $VRA.VraNetworkDataApi.VraIPAddress
+                            'VRA Subnet Mask' = $VRA.VraNetworkDataApi.SubnetMask
+                            'VRA Default Gateway' = $VRA.VraNetworkDataApi.DefaultGateway
+                            'VRA Group' = $VRA.VraGroup
+                            'Datastore' = $VRA.DatastoreName
+                            'Datastore Cluster' = Switch ($VRA.DatastoreClusterName) {
+                                $null { '--' }
+                                default { $VRA.DatastoreClusterName }
+                            }
+                            'Number of Protected VMs' = $VRA.ProtectedCounters.VMs
+                            'Number of Protected Volumes' = $VRA.ProtectedCounters.Volumes
+                            'Number of Protected VPGs' = $VRA.ProtectedCounters.VPGs
+                            'Number of Recovery VMs' = $VRA.RecoveryCounters.VMs
+                            'Number of Recovery Volumes' = $VRA.RecoveryCounters.Volumes
+                            'Number of Recovery VPGs' = $VRA.RecoveryCounters.VPGs
+                            <#
+                            'Datastore Cluster Identifier' = $VRA.DatastoreClusterIdentifier
+                            'Datastore Identifier' = $VRA.DatastoreIdentifier
+                            'Link' = $VRA.Link
+                            'Memory In GB' = $VRA.MemoryInGB
+                            'Network Identifier' = $VRA.NetworkIdentifier
+                            'Network Name' = $VRA.NetworkName
+                            'Progress' = $VRA.Progress
+                            'Self Protected Vpgs' = $VRA.SelfProtectedVpgs                           
+                            'VRA Identifier' = $VRA.VraIdentifier
+                            'IP Assignment' = $VRA.VraIPConfigurationTypeApi
+                            #>
+                        }
+                    }
+                    $TableParams = @{
+                        Name = "VRAs - $ZVM"
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $VRAInfo | Table @TableParams
                 }
             }
+            #endregion VRAs
+
+            #region Service Profiles
+            if ($ServiceProfiles) {
+                Section -Style Heading2 'Service Profiles' {
+                    $ServiceProfileInfo = foreach ($ServiceProfile in $ServiceProfiles) {
+                        [PSCustomObject]@{
+                            "Service Profile" = $ServiceProfile.ServiceProfileName
+                            "Description" = $ServiceProfile.Description
+                            "History" = $ServiceProfile.History
+                            "Journal Warning %" = $ServiceProfile.JournalWarningThresholdInPercent
+                            "MaxJournalSizeInPercent" = $ServiceProfile.MaxJournalSizeInPercent
+                            "RPO" = $ServiceProfile.Rpo
+                            "Test Interval" = $ServiceProfile.TestInterval
+                            
+                        }
+                    }
+                    $TableParams = @{
+                        Name = "Service Profiles - $ZVM"
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $ServiceProfileInfo | Table @TableParams
+                }
+            }
+            #endregion Service Profiles
+
+            #region VPGs
+            if ($VPGs) {
+                Section -Style Heading2 'VPGs' {
+                    $VpgInfo = foreach ($VPG in $VPGs) {
+                        $VPGVMs = @{}
+                        $VPGVMs = Get-ZertoApi -Uri ('/vpgs/'+ $($VPG.VPGIdentifier) + '/checkpointvms')
+                        [PSCustomObject]@{
+                            'VPG Name' = $VPG.VpgName
+                            'Protected Site Type' = Switch ($VPG.Entities.Protected) {
+                                0 { 'VC' }
+                                1 { 'vCD' }
+                                2 { 'vCD' }
+                                3 { 'N/A' }
+                                4 { 'Hyper-V' }
+                                default { 'Unknown' }
+                            }
+                            'Protected Site' = $VirtualizationSiteLookup."$($VPG.ProtectedSite.Identifier)"
+                            'Recovery Site Type' = Switch ($VPG.Entities.Recovery) {
+                                0 { 'VC' }
+                                1 { 'vCD' }
+                                2 { 'vCD' }
+                                3 { 'N/A' }
+                                4 { 'Hyper-V' }
+                                default { 'Unknown' }
+                            }
+                            'Recovery Site' = $VirtualizationSiteLookup."$($VPG.RecoverySite.Identifier)"
+                            'Peer Site' = $VPG.TargetSite
+                            'Priority' = Switch ($VPG.Priority) {
+                                0 { 'Low' }
+                                1 { 'Medium' }
+                                2 { 'High' }
+                                default { 'Unknown' }
+                            }
+                            'Protection Status' = Switch ($VPG.Status) {
+                                0 { 'Initializing' }
+                                1 { 'Meeting SLA' }
+                                2 { 'Not Meeting SLA' }
+                                3 { 'RPO Not Meeting SLA' }
+                                4 { 'History Not Meeting SLA' }
+                                5 { 'Failing Over' }
+                                6 { 'Moving' }
+                                7 { 'Deleting' }
+                                8 { 'Recovered' }
+                                default { 'Unknown' }
+                            }
+                            'SubStatus' = Switch ($VPG.SubStatus) {
+                                0 { 'None' }
+                                1 { 'Initial Sync' }
+                                2 { 'Creating' }
+                                3 { 'Volume Initial Sync' }
+                                4 { 'Sync' }
+                                5 { 'Recovery Possible' }
+                                6 { 'Delta Sync' }
+                                7 { 'Needs Configuration' }
+                                8 { 'Error' }
+                                9 { 'Empty Protection Group' }
+                                10 { 'Disconnected From Peer No Recovery Points' }
+                                11 { 'Full Sync' }
+                                12 { 'Volume Delta Sync' }
+                                13 { 'Volume Full Sync' }
+                                14 { 'Failing Over Committing' }
+                                15 { 'Failing Over Before Commit' }
+                                16 { 'Failing Over Rolling Back' }
+                                17 { 'Promoting' }
+                                18 { 'Moving Committing' }
+                                19 { 'Moving Before Commit' }
+                                20 { 'Moving Rolling Commit' }
+                                21 { 'Deleting' }
+                                22 { 'Pending Remove' }
+                                23 { 'Bitmap Sync' }
+                                24 { 'Disconnected From Peer' }
+                                25 { 'Replication Paused User Initiated' }
+                                26 { 'Replication Paused System Initiated' }
+                                27 { 'Recovery Storage Profile Error' }
+                                #28 {''} Does not exist in API documentation
+                                29 { 'Rolling Back' }
+                                30 { 'Recovery Storage Error' }
+                                31 { 'Journal Storage Error' }
+                                32 { 'VM Not Protected' }
+                                33 { 'Journal Or Recovery Missing Error' }
+                                34 { 'Added VMs Initial Sync' }
+                                35 { 'Replication Paused For Missing Volume' }
+                                36 { 'Stopping For Failover' }
+                                37 { 'Rolling Back Failover Live Failure' }
+                                38 { 'Rolling Back Move Failure' }
+                                39 { 'Splitting Committing' }
+                                40 { 'Prepare Preseed' }
+                                default { 'Unknown' }
+                            }
+                            'Target RPO ' = "$([math]::Round($VPG.ConfiguredRpoSeconds / 60 / 60)) hours"
+                            'Actual RPO' = Switch ($VPG.ActualRPO) {
+                                -1 { 'RPO Not Calculated' }
+                                default { "$($VPG.ActualRPO) seconds" }
+                            }
+                            'Provisioned Storage'  = "$([math]::Round($VPG.ProvisionedStorageInMB / 1024)) GB"
+                            'Used Storage' = "$([math]::Round($VPG.UsedStorageInMB / 1024)) GB"
+                            'Number of VMs'             = $VPG.VmsCount
+                            'Journal History' = "$([math]::Round($VPG.HistoryStatusApi.ConfiguredHistoryInMinutes / 60)) hours"
+                            'VMs' = ($VPGVMs.VmName | Sort-Object) -join ', '
+                            #'IOPs'                      = $VPG.IOPs
+                            #'Last Test'                 = $VPG.LastTest
+                            #'Organization Name'         = $VPG.OrganizationName
+                            #'Progress' = "$($VPG.ProgressPercentage)%"
+                            #'Service Profile ID' = $VPG.ServiceProfileIdentifier
+                            #'Service Profile Name'      = $VPG.ServiceProfileName
+                            #'Protection Site'           = $VPG.ProtectedSite.Identifier
+                            #'Throughput In MB'          = $VPG.ThroughputInMB
+                            #'Identifier'                = $VPG.VpgIdentifier
+                            #'Zorg'                      = $VPG.Zorg.Identifier
+                        }
+                    }
+                    $TableParams = @{
+                        Name = "VPGs - $ZVM"
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $VpgInfo | Table @TableParams
+                }
+            }
+            #endregion VPGs
+
+            #region VMs
+            if ($VMs) {
+                Section -Style Heading2 'VMs' {
+                    $VmInfo = foreach ($VM in $VMs) {
+                        [PSCustomObject] @{
+                            'VM Name' = $VM.VmName
+                            'VPG Name' = $VM.VpgName
+                            'Protected Site Type' = Switch ($VM.Entities.Protected) {
+                                0 { 'VC' }
+                                1 { 'vCD' }
+                                2 { 'vCD' }
+                                3 { 'N/A' }
+                                4 { 'Hyper-V' }
+                                default { 'Unknown' }
+                            }
+                            'Protected Site' = $VirtualizationSiteLookup."$($VM.ProtectedSite.Identifier)"
+                            'Recovery Site Type' = Switch ($VM.Entities.Recovery) {
+                                0 { 'VC' }
+                                1 { 'vCD' }
+                                2 { 'vCD' }
+                                3 { 'N/A' }
+                                4 { 'Hyper-V' }
+                                default { 'Unknown' }
+                            }
+                            'Recovery Site' = $VirtualizationSiteLookup."$($VM.RecoverySite.Identifier)"
+                            'Peer Site' = $VM.TargetSite
+                            'Recovery Host' = $VM.RecoveryHostIdentifier # Needs a lookup of VM Hosts at recovery site
+                            'Priority' = Switch ($VM.Priority) {
+                                0 { 'Low' }
+                                1 { 'Medium' }
+                                2 { 'High' }
+                                default { 'Unknown' }
+                            }
+                            'Protection Status' = Switch ($VM.Status) {
+                                0 { 'Initializing' }
+                                1 { 'Meeting SLA' }
+                                2 { 'Not Meeting SLA' }
+                                3 { 'RPO Not Meeting SLA' }
+                                4 { 'History Not Meeting SLA' }
+                                5 { 'Failing Over' }
+                                6 { 'Moving' }
+                                7 { 'Deleting' }
+                                8 { 'Recovered' }
+                                default { 'Unknown' }
+                            }
+                            'Sub Status' = Switch ($VM.SubStatus) {
+                                0 { 'None' }
+                                1 { 'InitialSync' }
+                                2 { 'Creating' }
+                                3 { 'Volume Initial Sync' }
+                                4 { 'Sync' }
+                                5 { 'Recovery Possible' }
+                                6 { 'Delta Sync' }
+                                7 { 'Needs Configuration' }
+                                8 { 'Error' }
+                                9 { 'Empty Protection Group' }
+                                10 { 'Disconnected From Peer No Recovery Points' }
+                                11 { 'Full Sync' }
+                                12 { 'Volume Delta Sync' }
+                                13 { 'Volume Full Sync' }
+                                14 { 'Failing Over Committing' }
+                                15 { 'Failing Over Before Commit' }
+                                16 { 'Failing Over Rolling Back' }
+                                17 { 'Promoting' }
+                                18 { 'Moving Committing' }
+                                19 { 'Moving Before Commit' }
+                                20 { 'Moving Rolling Back' }
+                                21 { 'Deleting' }
+                                22 { 'Pending Remove' }
+                                23 { 'Bitmap Sync' }
+                                24 { 'Disconnected From Peer' }
+                                25 { 'Replication Paused User Initiated' }
+                                26 { 'Replication Paused System Initiated' }
+                                27 { 'Recovery StorageProfile Error' }
+                                #28 {''} Does not exist in API documentation
+                                29 { 'Rolling Back' }
+                                30 { 'Recovery Storage Error' }
+                                31 { 'Journal Storage Error' }
+                                32 { 'Vm Not Protected Error' }
+                                33 { 'Journal Or Recovery Missing Error' }
+                                34 { 'Added Vms In Initial Sync' }
+                                35 { 'Replication Paused For Missing Volume' }
+                                default { 'Unknown' }
+                            }
+                            'Actual RPO' = Switch ($VM.ActualRPO) {
+                                -1 { 'RPO Not Calculated' }
+                                default { "$($VM.ActualRPO) seconds" }
+                            }
+                            'VM Hardware Version' = ($VM.HardwareVersion).TrimStart('vmx-')
+                            'File Level Recovery' = Switch ($VM.EnabledActions.IsFlrEnabled){
+                                $true { 'Enabled' }
+                                $false { 'Disabled' }
+                            }
+                            'Provisioned Storage'  = "$([math]::Round($VM.ProvisionedStorageInMB / 1024)) GB"
+                            'Used Storage' = "$([math]::Round($VM.UsedStorageInMB / 1024)) GB"
+                            'IOPs' = $VM.IOPs
+
+                            'Is Vm Exists' = $VM.IsVmExists
+                            'Journal Hard Limit' = $VM.JournalHardLimit
+                            'Journal Used Storage GB' = [math]::Round($VM.JournalUsedStorageMb / 1024)
+                            'Journal Warning Threshold' = $VM.JournalWarningThreshold
+                            'Last Test' = $VM.LastTest
+                            'Organization Name' = $VM.OrganizationName
+                            'Outgoing Bandwidth in Mbps' = $VM.OutgoingBandWidthInMbps
+                            
+                            'Throughput In MB'           = $VM.ThroughputInMB
+                            'Used Storage In GB'         = [math]::Round($VM.UsedStorageInMB / 1024)
+                            'Volumes'                    = $VM.Volumes
+                        }
+                    }
+                    $TableParams = @{
+                        Name = "VMs - $ZVM"
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $VmInfo | Table @TableParams
+                }
+            }
+            #endregion VMs
+
+            #region Datastores
+            if ($Datastores) {
+                Section -Style Heading2 'Datastores' {
+                    $DatastoreInfo = foreach ($Datastore in $Datastores) {
+                        [PSCustomObject]@{
+                            'Datastore' = $Datastore.DatastoreName
+                            'Status' = $Datastore.Health.Status
+                            'Type' = $Datastore.Config.Type
+                            'Devices' = ($Datastore.Config.Devices | Sort-Object) -join ', '
+                            'Cluster' = Switch ($Datastore.Config.OwningDatastoreCluster) {
+                                $null { '--' }
+                                default { $Datastore.Config.OwningDatastoreCluster }
+                            }
+                            'Number of Protected VMs' = $Datastore.Stats.NumOutgoingVMs
+                            'Number of Incoming VMs' = $Datastore.Stats.NumIncomingVMs
+                            'Number of VRAs' = $Datastore.Stats.NumVRAs
+                            #'Recovery Size' = ''
+                            #'Journal Size' = ''
+                        }
+                    }
+                    $TableParams = @{
+                        Name = "Datastores - $ZVM"
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $DatastoreInfo | Table @TableParams
+                }
+            }
+            #endregion Datastores
+
+            #region Volumes
+            if ($Volumes) {
+                Section -Style Heading2 'Volumes' {
+                    $VolumeInfo = foreach ($Volume in $Volumes) {
+                        [PSCustomObject]@{
+                            'Volume Type' = $Volume.VolumeType 
+                            'Protected Volume Location' = $Volume.Path.Full
+                            #'Recovery Volume Location' = ''
+                            'VM' = $Volume.OwningVM.Name 
+                            'Datastore' = $Volume.Datastore.Name
+                            'Provisioned Storage' = $Volume.Size.ProvisionedInBytes
+                            'Used Storage' = $Volume.Size.UsedInBytes
+                            'Thin Provisioned' = Switch ($Volume.IsThinProvisioned) {
+                                $true { 'Yes' }
+                                $false { 'No' }
+                            }
+                            'VPG' = $Volume.VPG.Name
+                        }
+                    }
+                    $TableParams = @{
+                        Name = "Volumes - $ZVM"
+                    }
+                    if ($Report.ShowTableCaptions) {
+                        $TableParams['Caption'] = "- $($TableParams.Name)"
+                    }
+                    $VolumeInfo | Table @TableParams
+                }
+            }
+            #endregion Volumes
         }
-    }   
-    If ($InfoLevel.VRAs._Section) {
-        Section -Style Heading1 'Virtual Replication Appliances' { 
-            If ($InfoLevel.VRAs.Overview) {
-                Section -Style Heading2 'Overview' { 
-                    $zerto.VRA | Sort-Object Name | Select-Object Name, "VRA Group", "VRA Version", 'Number of VMs', 'Number of Volumes' , 'Number of VPGs' | Table -Name 'VRAs' 
-                }
-            }
-            If ($InfoLevel.VRAs.Network) {
-                Section -Style Heading2 'Network' { 
-                    $zerto.VRA | Sort-Object Name | Select-Object Name, "IP Address", "Subnet Mask", "Default Gateway", "Network Name" | Table -Name 'VPGs Network'
-                }
-            }
-            If ($InfoLevel.VRAs.Storage) {
-                Section -Style Heading2 'Storage' { 
-                    $zerto.VRA | Sort-Object Name | Select-Object Name, "Datastore Name", "Datastore Cluster Name" | Table -Name 'VPGs Storage'
-                }
-            }
-        }
+        #endregion ZVM Heading 1
     }
-    If ($InfoLevel.VPGs) {
-        Section -Style Heading1 'Virtual Protection Groups' { 
-            Section -Style Heading2 'Overview' { 
-                $zerto.VPG | Sort-Object Name | Select-Object Name, "Protection Site", "Recovery Site", "Number of VMs", "Provisioned StorageIn GB" | Table -Name 'VPGs'
-            }
-        }
-    }
-    If ($InfoLevel.VMs._Section) {
-        Section -Style Heading1 'Virtual Machines' { 
-            If ($InfoLevel.VMs.VPGs) {
-                Section -Style Heading2 'VPG' { 
-                    $zerto.VM | Sort-Object Name | Select-Object Name, "VPG Name", "Protection Site", "Recovery Site", "Provisioned Storage In GB" | Table -Name "VMs VPG Information"
-                }
-            }
-            If ($InfoLevel.VMs.Hardware) {
-                Section -Style Heading2 'Hardware and Status' { 
-                    $zerto.VM | Sort-Object Name | Select-Object Name, "Hardware Version", "Status", "Sub Status", "Throughput In MB" | Table -Name "VM Status"
-                }
-            }
-            If ($InfoLevel.VMs.Network) {
-                Section -Style Heading2 'Network' { 
-                    $zerto.VM | Sort-Object Name | Select-Object Name, "Network ", "Protection Site", 'Recovery Site', 'Provisioned Storage In GB' | Table -Name 'VMs'
-                }
-            }
-        }
-    }
+    #endregion foreach $ZVM in $Target
 }
