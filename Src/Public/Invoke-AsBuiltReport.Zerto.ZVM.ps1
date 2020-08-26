@@ -6,9 +6,9 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
         Documents the configuration of Zerto infrastucture in Word/HTML/Text formats using PScribo.
     .NOTES
         Version:        0.1.0
-        Author:         Richard Gray / Tim Carman
-        Twitter:        @goodgigs / @tpcarman
-        Github:         richard-gray / tpcarman
+        Author:         Tim Carman / Richard Gray
+        Twitter:        @tpcarman / @goodgigs
+        Github:         tpcarman / richard-gray
         Credits:        Iain Brighton (@iainbrighton) - PScribo module
                         Joshua Stenhouse (@joshuastenhouse) - Zerto Info Script
     .LINK
@@ -83,9 +83,10 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
         #region ZVM Heading 1
         Section -Style Heading1 $ZVM {
             #region Local Site Information
-            if ($LocalSite) {               
-                Section -Style Heading2 'Local Site Information' {
-                    $LocalSiteInfo = [PSCustomObject]@{
+            if (($LocalSite) -and ($InfoLevel.LocalSite -gt 0)) {               
+                Section -Style Heading2 'Local Site' {
+                    # Collect Local Site information
+                    $LocalSiteInfo = [PSCustomObject] @{
                         'Site Name' = $LocalSite.SiteName
                         'Site Type' = $LocalSite.SiteType
                         'IP Address' = $LocalSite.IpAddress
@@ -100,19 +101,32 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                         'Contact Email' = $LocalSite.ContactEmail
                         'Contact Phone' = $LocalSite.ContactPhone
                     }
-                    $TableParams = @{
-                        Name = "Site Information - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.LocalSite -eq 2) {
+                        $TableParams = @{
+                            Name = "Local Site - $ZVM"
+                            List = $true
+                            ColumnWidths = 50, 50
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $LocalSiteInfo | Table @TableParams
+                    } else {
+                        $TableParams = @{
+                            Name = "Local Site - $ZVM"
+                            Columns = 'Site Name','Site Type','IP Address','Version'
+                            ColumnWidths = 25, 25, 25, 25
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $LocalSiteInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $LocalSiteInfo | Table @TableParams
 
                     #region Throttling
                     Section -Style Heading3 'Throttling' {
-                        $Throttling = [PSCustomObject]@{
+                        $Throttling = [PSCustomObject] @{
                             'Bandwidth Throttling' = "$($LocalSite.BandwidthThrottlingInMBs) MB/sec"
                         }
                         $TableParams = @{
@@ -130,8 +144,11 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                     #region Licensing
                     if ($License) {
                         Section -Style Heading3 'Licensing' {
-                            $LicenseInfo = [PSCustomObject]@{
-                                'License' = $License.Details.LicenseKey
+                            $LicenseInfo = [PSCustomObject] @{
+                                'License' = Switch ($Options.ShowLicense) {
+                                    $true { $License.Details.LicenseKey }
+                                    $false { 'License key will not be shown' }
+                                }
                                 'License Type' = $License.Details.LicenseType
                                 'Expiry Date' = [datetime]$License.Details.ExpiryTime
                                 'Quantity' = $License.Details.MaxVms
@@ -158,7 +175,7 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
 
                     #region Email Settings
                     Section -Style Heading3 'Email Settings' {
-                        $EmailConfig = [PSCustomObject]@{
+                        $EmailConfig = [PSCustomObject] @{
                             'SMTP Server Address' = ''
                             'SMTP Server Port' = ''
                             'Sender Account' = ''
@@ -196,37 +213,58 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
             #endregion Local Site Information
 
             #region Sites
-            if ($PeerSites) {
-                Section -Style Heading2 'Sites' {
+            if (($PeerSites) -and ($InfoLevel.PeerSite -gt 0)) {
+                Section -Style Heading2 'Peer Sites' {
+                    # Collect Peer Site information
                     $PeerSiteInfo = foreach ($PeerSite in $PeerSites) {
-                        [PSCustomObject]@{
+                        [PSCustomObject] @{
                             'Site Name'= $Peersite.PeerSiteName
                             'Location' = $Peersite.Location
                             'Hostname / IP' = $Peersite.HostName
                             'Network' = $Peersite.OutgoingBandwidth
-                            'Provisioned Storage' = $Peersite.ProvisionedStorage
-                            'Used Storage' = $Peersite.UsedStorage
+                            'Provisioned Storage' = "$([math]::Round($Peersite.ProvisionedStorage / 1GB)) GB"
+                            'Used Storage' = "$([math]::Round($Peersite.UsedStorage / 1GB)) GB"
                             'Site Type' = $Peersite.SiteType
                             'Port' = $Peersite.Port
                             'Version' = $Peersite.Version
                         }
                     }
-                    $TableParams = @{
-                        Name = "Sites - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    $PeerSiteInfo = $PeerSiteInfo | Sort-Object 'Site Name'
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.PeerSite -eq 2) {
+                        $PeerSiteInfo | ForEach-Object {
+                            $PeerSite = $_
+                            Section -Style Heading3 $($PeerSite.'Site Name') {    
+                                $TableParams = @{
+                                    Name = "Peer Site $($PeerSite.'Site Name') - $ZVM"
+                                    List = $true
+                                    ColumnWidths = 50, 50
+                                }
+                                if ($Report.ShowTableCaptions) {
+                                    $TableParams['Caption'] = "- $($TableParams.Name)"
+                                }
+                                $PeerSite | Table @TableParams
+                            }
+                        }
+                    } else {
+                        $TableParams = @{
+                            Name = "Peer Sites - $ZVM"
+                            Columns = 'Site Name','Location','Hostname / IP','Site Type','Version'
+                            ColumnWidths = 25, 25, 20, 15, 15
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $PeerSiteInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $PeerSiteInfo | Table @TableParams
                 }
             }
             #endregion Sites
 
             #region VRAs
-            if ($VRAs) {
+            if (($VRAs) -and ($InfoLevel.VRA -gt 0)) {
                 Section -Style Heading2 'VRAs' {
+                    # Collect VRA information
                     $VRAInfo = foreach ($VRA in $VRAs) {
                         [PSCustomObject] @{
                             'Host Address' = $vSphereHostLookup."$($VRA.HostIdentifier)"
@@ -256,6 +294,7 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                             }
                             #>
                             'VRA Version' = $VRA.VraVersion
+                            'VRA RAM' = "$($VRA.MemoryInGB) GB"
                             'VRA IP Configuration' = $VRA.VraNetworkDataApi.VraIPConfigurationTypeApi
                             'VRA IP Address' = $VRA.VraNetworkDataApi.VraIPAddress
                             'VRA Subnet Mask' = $VRA.VraNetworkDataApi.SubnetMask
@@ -286,54 +325,94 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                             #>
                         }
                     }
-                    $TableParams = @{
-                        Name = "VRAs - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    $VRAInfo = $VRAInfo | Sort-Object 'Host Address'
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.VRA -eq 2) {
+                        $VRAInfo | ForEach-Object {
+                            $VRA = $_
+                            Section -Style Heading3 $($VRA.'VRA Name') {    
+                                $TableParams = @{
+                                    Name = "VRA $($VRA.'VRA Name') - $ZVM"
+                                    List = $true
+                                    ColumnWidths = 50, 50
+                                }
+                                if ($Report.ShowTableCaptions) {
+                                    $TableParams['Caption'] = "- $($TableParams.Name)"
+                                }
+                                $VRA | Table @TableParams
+                            }
+                        } 
+                    } else {
+                        $TableParams = @{
+                            Name = "VRAs - $ZVM"
+                            Columns = 'Host Address','Host Version','VRA Name','VRA Status','VRA IP Address','VRA Version'
+                            ColumnWidths = 25, 10, 25, 13, 17, 10
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $VRAInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $VRAInfo | Table @TableParams
                 }
             }
             #endregion VRAs
 
             #region Service Profiles
-            if ($ServiceProfiles) {
+            if (($ServiceProfiles) -and ($InfoLevel.ServiceProfile -gt 0)) {
                 Section -Style Heading2 'Service Profiles' {
+                    # Collect Service Profile information
                     $ServiceProfileInfo = foreach ($ServiceProfile in $ServiceProfiles) {
-                        [PSCustomObject]@{
-                            "Service Profile" = $ServiceProfile.ServiceProfileName
-                            "Description" = $ServiceProfile.Description
-                            "History" = $ServiceProfile.History
-                            "Journal Warning %" = $ServiceProfile.JournalWarningThresholdInPercent
-                            "MaxJournalSizeInPercent" = $ServiceProfile.MaxJournalSizeInPercent
-                            "RPO" = $ServiceProfile.Rpo
-                            "Test Interval" = $ServiceProfile.TestInterval
-                            
+                        [PSCustomObject] @{
+                            'Service Profile' = $ServiceProfile.ServiceProfileName
+                            'Description' = $ServiceProfile.Description
+                            'History' = $ServiceProfile.History
+                            'Journal Warning %' = $ServiceProfile.JournalWarningThresholdInPercent
+                            'MaxJournalSizeInPercent' = $ServiceProfile.MaxJournalSizeInPercent
+                            'RPO' = $ServiceProfile.Rpo
+                            'Test Interval' = $ServiceProfile.TestInterval
                         }
                     }
-                    $TableParams = @{
-                        Name = "Service Profiles - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    $ServiceProfileInfo = $ServiceProfileInfo | Sort-Object 'Service Profile'
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.ServiceProfile -eq 2) {
+                        $ServiceProfileInfo | ForEach-Object {
+                            $ServiceProfile = $_
+                            Section -Style Heading3 $($ServiceProfile.'Service Profile') {    
+                                $TableParams = @{
+                                    Name = "Service Profile $($ServiceProfile.'Service Profile') - $ZVM"
+                                    List = $true
+                                    ColumnWidths = 50, 50
+                                }
+                                if ($Report.ShowTableCaptions) {
+                                    $TableParams['Caption'] = "- $($TableParams.Name)"
+                                }
+                                $ServiceProfile | Table @TableParams
+                            }
+                        }
+                    } else {
+                        $TableParams = @{
+                            Name = "Service Profiles - $ZVM"
+                            Columns = 'Service Profile','Description','RPO','Test Interval'
+                            ColumnWidths = 30, 40, 15, 15
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $ServiceProfileInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $ServiceProfileInfo | Table @TableParams
                 }
             }
             #endregion Service Profiles
 
             #region VPGs
-            if ($VPGs) {
+            ## TODO: VPG Settings - WAN Compression
+            if (($VPGs) -and ($InfoLevel.VPG -gt 0)) {
                 Section -Style Heading2 'VPGs' {
+                    # Collect VPG information
                     $VpgInfo = foreach ($VPG in $VPGs) {
                         $VPGVMs = @{}
                         $VPGVMs = Get-ZertoApi -Uri ('/vpgs/'+ $($VPG.VPGIdentifier) + '/checkpointvms')
-                        [PSCustomObject]@{
+                        [PSCustomObject] @{
                             'VPG Name' = $VPG.VpgName
                             'Protected Site Type' = Switch ($VPG.Entities.Protected) {
                                 0 { 'VC' }
@@ -372,7 +451,7 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                                 8 { 'Recovered' }
                                 default { 'Unknown' }
                             }
-                            'SubStatus' = Switch ($VPG.SubStatus) {
+                            'Sub Status' = Switch ($VPG.SubStatus) {
                                 0 { 'None' }
                                 1 { 'Initial Sync' }
                                 2 { 'Creating' }
@@ -438,22 +517,43 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                             #'Zorg'                      = $VPG.Zorg.Identifier
                         }
                     }
-                    $TableParams = @{
-                        Name = "VPGs - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    $VpgInfo = $VpgInfo | Sort-Object 'VPG Name'
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.VPG -eq 2) {
+                        $VPGInfo | ForEach-Object {
+                            $VPG = $_
+                            Section -Style Heading3 $($VPG.'VPG Name') { 
+                                $TableParams = @{
+                                    Name = "VPG $($VPG.'VPG Name') - $ZVM"
+                                    List = $true
+                                    ColumnWidths = 50, 50
+                                }
+                                if ($Report.ShowTableCaptions) {
+                                    $TableParams['Caption'] = "- $($TableParams.Name)"
+                                }
+                                $VPG | Table @TableParams
+                            }
+                        }
+                    } else {
+                        $TableParams = @{
+                            Name = "VPGs - $ZVM"
+                            Columns = 'VPG Name','Peer Site','Priority','Protection Status'
+                            ColumnWidths = 35, 35, 14, 16
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $VpgInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $VpgInfo | Table @TableParams
                 }
             }
             #endregion VPGs
 
             #region VMs
-            if ($VMs) {
+            ## TODO: VM NIC Count 
+            if (($VMs) -and ($InfoLevel.VM -gt 0)) {
                 Section -Style Heading2 'VMs' {
+                    # Collect VM information
                     $VmInfo = foreach ($VM in $VMs) {
                         [PSCustomObject] @{
                             'VM Name' = $VM.VmName
@@ -547,7 +647,7 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                             'Provisioned Storage'  = "$([math]::Round($VM.ProvisionedStorageInMB / 1024)) GB"
                             'Used Storage' = "$([math]::Round($VM.UsedStorageInMB / 1024)) GB"
                             'IOPs' = $VM.IOPs
-
+                            <#
                             'Is Vm Exists' = $VM.IsVmExists
                             'Journal Hard Limit' = $VM.JournalHardLimit
                             'Journal Used Storage GB' = [math]::Round($VM.JournalUsedStorageMb / 1024)
@@ -559,26 +659,47 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                             'Throughput In MB'           = $VM.ThroughputInMB
                             'Used Storage In GB'         = [math]::Round($VM.UsedStorageInMB / 1024)
                             'Volumes'                    = $VM.Volumes
+                            #>
                         }
                     }
-                    $TableParams = @{
-                        Name = "VMs - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    $VmInfo = $VmInfo | Sort-Object 'VM Name'
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.VM -eq 2) {
+                        $VmInfo | ForEach-Object {
+                            $VM = $_
+                            Section -Style Heading3 $($VM.'VM Name') { 
+                                $TableParams = @{
+                                    Name = "VM $($VM.'VM Name') - $ZVM"
+                                    List = $true
+                                    ColumnWidths = 50, 50
+                                }
+                                if ($Report.ShowTableCaptions) {
+                                    $TableParams['Caption'] = "- $($TableParams.Name)"
+                                }
+                                $VM | Table @TableParams
+                            }
+                        }
+                    } else {
+                        $TableParams = @{
+                            Name = "VMs - $ZVM"
+                            Columns = 'VM Name','VPG Name','Peer Site','Priority','Protection Status'
+                            ColumnWidths = 23, 23, 24, 14, 16
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $VmInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $VmInfo | Table @TableParams
                 }
             }
             #endregion VMs
 
             #region Datastores
-            if ($Datastores) {
+            if (($Datastores) -and ($InfoLevel.Datastore -gt 0)) {
                 Section -Style Heading2 'Datastores' {
+                    # Collect Datastore information
                     $DatastoreInfo = foreach ($Datastore in $Datastores) {
-                        [PSCustomObject]@{
+                        [PSCustomObject] @{
                             'Datastore' = $Datastore.DatastoreName
                             'Status' = $Datastore.Health.Status
                             'Type' = $Datastore.Config.Type
@@ -594,47 +715,91 @@ function Invoke-AsBuiltReport.Zerto.ZVM {
                             #'Journal Size' = ''
                         }
                     }
-                    $TableParams = @{
-                        Name = "Datastores - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    $DatastoreInfo = $DatastoreInfo | Sort-Object 'Datastore'
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.Datastore -eq 2) {
+                        $DatastoreInfo | ForEach-Object {
+                            $Datastore = $_
+                            Section -Style Heading3 $($Datastore.'Datastore') { 
+                                $TableParams = @{
+                                    Name = "Datastore $($Datastore.'Datastore') - $ZVM"
+                                    List = $true
+                                    ColumnWidths = 50, 50
+                                }
+                                if ($Report.ShowTableCaptions) {
+                                    $TableParams['Caption'] = "- $($TableParams.Name)"
+                                }
+                                $Datastore | Table @TableParams
+                            }
+                        }
+                    } else {
+                        $TableParams = @{
+                            Name = "Datastores - $ZVM"
+                            Columns = 'Datastore','Status','Type','Cluster','Number of Protected VMs','Number of VRAs'
+                            Headers = 'Datastore','Status','Type','Cluster','# Protected VMs','# VRAs'
+                            ColumnWidths = 24, 13, 13, 24, 13, 13
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $DatastoreInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $DatastoreInfo | Table @TableParams
                 }
             }
             #endregion Datastores
 
             #region Volumes
-            if ($Volumes) {
+            ## TODO: VM Volume Settings - VolumeIsSWAP
+            if (($Volumes) -and ($InfoLevel.Volume -gt 0)) {
                 Section -Style Heading2 'Volumes' {
+                    # Collect Volume information
                     $VolumeInfo = foreach ($Volume in $Volumes) {
-                        [PSCustomObject]@{
-                            'Volume Type' = $Volume.VolumeType 
+                        [PSCustomObject] @{
+                            'VM' = $Volume.OwningVM.Name
+                            'Datastore' = $Volume.Datastore.Name
                             'Protected Volume Location' = $Volume.Path.Full
                             #'Recovery Volume Location' = ''
-                            'VM' = $Volume.OwningVM.Name 
-                            'Datastore' = $Volume.Datastore.Name
-                            'Provisioned Storage' = $Volume.Size.ProvisionedInBytes
-                            'Used Storage' = $Volume.Size.UsedInBytes
+                            'Provisioned Storage' = "$([math]::Round($Volume.Size.ProvisionedInBytes / 1GB)) GB"
+                            'Provisioned Storage GB' = [math]::Round($Volume.Size.ProvisionedInBytes / 1GB)
+                            'Used Storage' = "$([math]::Round($Volume.Size.UsedInBytes / 1GB)) GB"
                             'Thin Provisioned' = Switch ($Volume.IsThinProvisioned) {
                                 $true { 'Yes' }
                                 $false { 'No' }
                             }
+                            'Volume Type' = $Volume.VolumeType 
                             'VPG' = $Volume.VPG.Name
                         }
                     }
-                    $TableParams = @{
-                        Name = "Volumes - $ZVM"
-                        List = $true
-                        ColumnWidths = 50, 50
+                    $VolumeInfo = $VolumeInfo | Sort-Object 'VM'
+                    # Check InfoLevels, if 2 show individual tables, else show a single summarised table
+                    if ($InfoLevel.Volume -eq 2) {
+                        $VolumeInfo | ForEach-Object {
+                            $Volume = $_
+                            Section -Style Heading3 $($Volume.'Datastore') { 
+                                $TableParams = @{
+                                    Name = "Volume $($Volume.'Datastore') - $ZVM"
+                                    List = $true
+                                    Columns = 'VM','Datastore','Protected Volume Location','Provisioned Storage','Used Storage','Thin Provisioned','Volume Type','VPG'
+                                    ColumnWidths = 50, 50
+                                }
+                                if ($Report.ShowTableCaptions) {
+                                    $TableParams['Caption'] = "- $($TableParams.Name)"
+                                }
+                                $Volume | Table @TableParams
+                            }
+                        }
+                    } else {
+                        $TableParams = @{
+                            Name = "Volumes - $ZVM"
+                            Columns = 'VM','Datastore','Protected Volume Location','Provisioned Storage GB','Thin Provisioned','VPG'
+                            Headers = 'VM','Datastore','Protected Volume Location','Provisioned GB','Thin','VPG'
+                            ColumnWidths = 20, 20, 20, 14, 10, 16
+                        }
+                        if ($Report.ShowTableCaptions) {
+                            $TableParams['Caption'] = "- $($TableParams.Name)"
+                        }
+                        $VolumeInfo | Table @TableParams
                     }
-                    if ($Report.ShowTableCaptions) {
-                        $TableParams['Caption'] = "- $($TableParams.Name)"
-                    }
-                    $VolumeInfo | Table @TableParams
                 }
             }
             #endregion Volumes

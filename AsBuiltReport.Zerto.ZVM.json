@@ -8,18 +8,19 @@
         "ShowTableCaptions": true
     },
     "Options": {
-        "ZvmPort": 9669
+        "ZvmPort": 9669,
+        "ShowLicense": false
     },
     "InfoLevel": {
-        "_comment_": "0 = Disabled, 1 = Enabled / Summary, 2 = Detailed, 3 = Comprehensive",
+        "_comment_": "0 = Disabled, 1 = Enabled / Summary, 2 = Detailed",
         "LocalSite": 2,
         "PeerSite": 2,
-        "ServiceProfiles": 0,
-        "VRAs": 2,        
-        "VPGs": 2, 
-        "VMs": 2,
-        "Datastores": 2,
-        "Volumes": 2
+        "ServiceProfile": 0,
+        "VRA": 2,        
+        "VPG": 2, 
+        "VM": 2,
+        "Datastore": 2,
+        "Volume": 2
     },
     "HealthCheck": {
     }
