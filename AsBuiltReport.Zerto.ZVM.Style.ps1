@@ -7,16 +7,16 @@ DocumentOption -EnableSectionNumbering -PageSize A4 -DefaultFont 'Arial' -Margin
 Style -Name 'Title' -Size 24 -Color 'BA0C25' -Align Center
 Style -Name 'Title 2' -Size 18 -Color '1D2137' -Align Center
 Style -Name 'Title 3' -Size 12 -Color '1D2137' -Align Left
-Style -Name 'Heading 1' -Size 16 -Color 'BA0C25' 
-Style -Name 'Heading 2' -Size 14 -Color 'BA0C25' 
-Style -Name 'Heading 3' -Size 12 -Color 'BA0C25' 
-Style -Name 'Heading 4' -Size 11 -Color 'BA0C25' 
+Style -Name 'Heading 1' -Size 16 -Color 'BA0C25'
+Style -Name 'Heading 2' -Size 14 -Color 'BA0C25'
+Style -Name 'Heading 3' -Size 12 -Color 'BA0C25'
+Style -Name 'Heading 4' -Size 11 -Color 'BA0C25'
 Style -Name 'Heading 5' -Size 10 -Color 'BA0C25'
 Style -Name 'Normal' -Size 10 -Color '565656' -Default
 Style -Name 'Caption' -Size 10 -Color '565656' -Italic -Align Center
 Style -Name 'Header' -Size 10 -Color '565656' -Align Center
 Style -Name 'Footer' -Size 10 -Color '565656' -Align Center
-Style -Name 'TOC' -Size 16 -Color 'BA0C25' 
+Style -Name 'TOC' -Size 16 -Color 'BA0C25'
 Style -Name 'TableDefaultHeading' -Size 10 -Color 'FFFFFF' -BackgroundColor '1D2137'
 Style -Name 'TableDefaultRow' -Size 10 -Color '565656'
 Style -Name 'Critical' -Size 10 -BackgroundColor 'F74541'
@@ -32,7 +32,7 @@ $TableDefaultProperties = @{
     BorderColor = '1D2137'
     Align = 'Left'
     CaptionStyle = 'Caption'
-    CaptionLocation = 'Below' 
+    CaptionLocation = 'Below'
     BorderWidth = 0.25
     PaddingTop = 1
     PaddingBottom = 1.5
@@ -91,6 +91,8 @@ Table -Name 'Cover Page' -List -Style Borderless -Width 0 -Hashtable ([Ordered] 
     })
 PageBreak
 
-# Add Table of Contents
-TOC -Name 'Table of Contents'
-PageBreak
+if ($ReportConfig.Report.ShowTableOfContents) {
+    # Add Table of Contents
+    TOC -Name 'Table of Contents'
+    PageBreak
+}

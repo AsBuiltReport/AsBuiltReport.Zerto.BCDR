@@ -4,6 +4,7 @@
         "Version": "1.0",
         "Status": "Released",
         "ShowCoverPageImage": true,
+        "ShowTableOfContents": true,
         "ShowHeaderFooter": true,
         "ShowTableCaptions": true
     },
@@ -17,8 +18,8 @@
         "LocalSite": 2,
         "PeerSite": 2,
         "ServiceProfile": 0,
-        "VRA": 2,        
-        "VPG": 2, 
+        "VRA": 2,
+        "VPG": 2,
         "VM": 2,
         "Datastore": 2,
         "Volume": 1
